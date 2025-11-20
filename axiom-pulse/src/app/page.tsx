@@ -4,21 +4,20 @@ import { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/store/store';
 import { setMobileTab } from '@/store/pulseSlice';
-import { useTokens, usePriceUpdates } from '@/hooks/useMockData';
+import { useTokens } from '@/hooks/useMockData';
+import { useSocket } from '@/hooks/useSocket';
 import { TokenCard } from '@/components/pulse/TokenCard';
 import { ColumnHeader } from '@/components/pulse/ColumnHeader';
 import { ColumnType, TokenType } from '@/types';
-import { ChevronDown, Search, Bell, Settings, Wallet, Star, LayoutGrid, ListFilter, BarChart2, Activity, Home, Layers } from 'lucide-react';
+import { ChevronDown, Search, Bell, Settings, Wallet, Star, BarChart2, Activity } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 
-// Navigation Component (Mock)
+// --- Components Defined OUTSIDE to prevent re-render flickering ---
+
 const TopNav = () => (
   <header className="h-14 border-b border-axiom-border bg-axiom-card flex items-center justify-between px-4 shrink-0">
     <div className="flex items-center gap-6">
-       {/* Logo Placeholder */}
        <div className="w-8 h-8 bg-gradient-to-br from-white to-gray-400 rounded-full" />
-       
-       {/* Desktop Tabs */}
        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-axiom-muted">
           <span className="hover:text-white cursor-pointer">Discover</span>
           <span className="text-axiom-primary border-b-2 border-axiom-primary h-14 flex items-center px-1">Pulse</span>
@@ -33,11 +32,9 @@ const TopNav = () => (
           SOL
           <ChevronDown size={12} />
        </button>
-       
        <button className="hidden md:block bg-gradient-to-r from-blue-600 to-axiom-primary hover:opacity-90 text-white text-xs font-bold px-4 py-1.5 rounded-full transition-opacity">
           Deposit
        </button>
-       
        <div className="flex items-center gap-3 text-axiom-muted ml-2">
           <Star size={18} className="hover:text-white cursor-pointer"/>
           <Bell size={18} className="hover:text-white cursor-pointer"/>
@@ -85,49 +82,46 @@ const UserIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 )
 
-// Main Dashboard
-export default function PulsePage() {
-  const { data: tokens, isLoading } = useTokens();
-  usePriceUpdates(); // Trigger mock socket updates
-
-  const dispatch = useDispatch();
-  const mobileTab = useSelector((state: RootState) => state.pulse.mobileActiveTab);
-  const [selectedToken, setSelectedToken] = useState<TokenType | null>(null);
-
-  // Filter buckets
-  const newPairs = tokens?.filter(t => t.status === "New Pairs") || [];
-  const finalStretch = tokens?.filter(t => t.status === "Final Stretch") || [];
-  const migrated = tokens?.filter(t => t.status === "Migrated") || [];
-
-  // Mobile Tab Switcher Component
-  const MobileTabSwitcher = () => (
-    <div className="md:hidden px-4 py-3 bg-background border-b border-axiom-border">
-      <div className="flex p-1 bg-axiom-card rounded-lg">
-        {(["New Pairs", "Final Stretch", "Migrated"] as ColumnType[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => dispatch(setMobileTab(tab))}
-            className={cn(
-              "flex-1 py-1.5 text-xs font-medium rounded-md transition-all",
-              mobileTab === tab ? "bg-axiom-border text-white shadow-sm" : "text-axiom-muted hover:text-gray-300"
-            )}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+// STABLE COMPONENT: Mobile Tabs
+const MobileTabSwitcher = ({ activeTab, onTabChange }: { activeTab: ColumnType, onTabChange: (t: ColumnType) => void }) => (
+  <div className="md:hidden px-4 py-3 bg-background border-b border-axiom-border sticky top-0 z-20">
+    <div className="flex p-1 bg-axiom-card rounded-lg">
+      {(["New Pairs", "Final Stretch", "Migrated"] as ColumnType[]).map((tab) => (
+        <button
+          key={tab}
+          type="button"
+          onClick={() => onTabChange(tab)}
+          className={cn(
+            "flex-1 py-1.5 text-xs font-medium rounded-md transition-all select-none touch-manipulation",
+            activeTab === tab ? "bg-axiom-border text-white shadow-sm" : "text-axiom-muted hover:text-gray-300"
+          )}
+        >
+          {tab}
+        </button>
+      ))}
     </div>
-  );
+  </div>
+);
 
-  // Column Renderer — do NOT access window during render (causes hydration mismatch)
-  const renderColumn = (title: ColumnType, data: TokenType[]) => {
-    const showOnMobile = mobileTab === title; // based on Redux default on server
-
+// STABLE COMPONENT: Column
+const TokenColumn = ({ 
+    title, 
+    data, 
+    isVisibleOnMobile, 
+    isLoading, 
+    onTokenClick 
+}: { 
+    title: ColumnType, 
+    data: TokenType[], 
+    isVisibleOnMobile: boolean, 
+    isLoading: boolean,
+    onTokenClick: (t: TokenType) => void 
+}) => {
     return (
       <div
         className={cn(
-          "flex-1 flex flex-col min-w-0 border-r border-axiom-border last:border-r-0 h-full",
-          showOnMobile ? "flex md:flex" : "hidden md:flex"
+          "flex-1 flex-col min-w-0 border-r border-axiom-border last:border-r-0 h-full",
+          isVisibleOnMobile ? "flex" : "hidden md:flex"
         )}
       >
         <ColumnHeader
@@ -150,7 +144,7 @@ export default function PulsePage() {
             </div>
           ) : (
             data.map((token) => (
-              <TokenCard key={token.id} token={token} onClick={() => setSelectedToken(token)} />
+              <TokenCard key={token.id} token={token} onClick={() => onTokenClick(token)} />
             ))
           )}
 
@@ -163,13 +157,29 @@ export default function PulsePage() {
         </div>
       </div>
     );
-  };
+};
+
+
+// --- Main Page Component ---
+
+export default function PulsePage() {
+  const { data: tokens, isLoading } = useTokens();
+  useSocket(); 
+
+  const dispatch = useDispatch();
+  const mobileTab = useSelector((state: RootState) => state.pulse.mobileActiveTab);
+  const [selectedToken, setSelectedToken] = useState<TokenType | null>(null);
+
+  // Filter buckets
+  const newPairs = tokens?.filter(t => t.status === "New Pairs") || [];
+  const finalStretch = tokens?.filter(t => t.status === "Final Stretch") || [];
+  const migrated = tokens?.filter(t => t.status === "Migrated") || [];
 
   return (
     <main className="flex flex-col h-[100dvh] bg-background text-foreground">
       <TopNav />
       
-      {/* Secondary Status Bar (Desktop) */}
+      {/* Secondary Status Bar */}
       <div className="hidden md:flex items-center justify-between px-4 py-1 bg-[#050505] border-b border-axiom-border text-[10px] text-axiom-muted/70">
          <div className="flex items-center gap-4">
              <div className="flex items-center gap-1.5">
@@ -185,19 +195,36 @@ export default function PulsePage() {
          </div>
       </div>
 
-      <MobileTabSwitcher />
+      <MobileTabSwitcher activeTab={mobileTab} onTabChange={(t) => dispatch(setMobileTab(t))} />
 
       {/* Columns Container */}
       <div className="flex-1 flex overflow-hidden relative">
-         {/* Render all columns on desktop, filtered by state on mobile */}
-         {renderColumn("New Pairs", newPairs)}
-         {renderColumn("Final Stretch", finalStretch)}
-         {renderColumn("Migrated", migrated)}
+         <TokenColumn 
+            title="New Pairs" 
+            data={newPairs} 
+            isVisibleOnMobile={mobileTab === "New Pairs"} 
+            isLoading={isLoading}
+            onTokenClick={setSelectedToken}
+         />
+         <TokenColumn 
+            title="Final Stretch" 
+            data={finalStretch} 
+            isVisibleOnMobile={mobileTab === "Final Stretch"} 
+            isLoading={isLoading}
+            onTokenClick={setSelectedToken}
+         />
+         <TokenColumn 
+            title="Migrated" 
+            data={migrated} 
+            isVisibleOnMobile={mobileTab === "Migrated"} 
+            isLoading={isLoading}
+            onTokenClick={setSelectedToken}
+         />
       </div>
 
       <MobileBottomNav />
 
-      {/* Token Detail Modal (Simple Implementation) */}
+      {/* Token Detail Modal */}
       {selectedToken && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center sm:justify-end bg-black/50 backdrop-blur-sm" onClick={() => setSelectedToken(null)}>
             <div className="w-full md:w-[400px] h-[80vh] md:h-screen bg-axiom-card border-l border-axiom-border p-6 overflow-y-auto animate-in slide-in-from-bottom-10 md:slide-in-from-right-10" onClick={e => e.stopPropagation()}>
