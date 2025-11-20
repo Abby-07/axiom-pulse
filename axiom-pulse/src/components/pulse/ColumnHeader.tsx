@@ -1,5 +1,4 @@
 import { ColumnType } from '@/types';
-import { Filter, Layers } from 'lucide-react';
 
 export const ColumnHeader = ({ 
   title, 
