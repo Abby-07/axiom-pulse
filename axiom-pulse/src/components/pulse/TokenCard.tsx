@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useState, useRef } from 'react';
 import { TokenType } from '@/types';
 import { cn, formatCurrency, formatTimeAgo } from '@/lib/utils';
-import { User, Globe, Link as LinkIcon, Zap, ShieldCheck, TrendingUp } from 'lucide-react';
+import { User, Globe, Link as LinkIcon, Zap, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 // Hook for flash effect
@@ -92,7 +92,7 @@ export const TokenCard = memo(({ token, onClick }: { token: TokenType; onClick: 
           
           {token.priceChange.h1 > 0 && (
              <Badge variant="green" className="gap-1">
-               <TrendingUp size={8} /> 10%
+               <ChevronRight size={8} /> 10%
              </Badge>
           )}
 
