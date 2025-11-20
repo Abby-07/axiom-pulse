@@ -1,40 +1,35 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TokenType } from "@/types";
 
-export function useSocket(url = "ws://localhost:4000") {
+export function useSocket() {
   const qc = useQueryClient();
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg?.type === "priceUpdate") {
-          qc.setQueryData<TokenType[] | undefined>(["tokens"], (old) => {
-            if (!old) return old;
-            return old.map((t) =>
-              t.id === msg.id 
-                ? { ...t, mcap: Math.max(0, t.mcap + (msg.delta || 0)) } 
-                : t
-            );
-          });
+    // Simulate fast socket updates locally (works on Vercel)
+    const interval = setInterval(() => {
+      qc.setQueryData<TokenType[] | undefined>(["tokens"], (old) => {
+        if (!old) return old;
+        
+        // Clone array to trigger React update
+        const newTokens = [...old];
+        
+        // Update 3 random tokens per tick (200ms)
+        for (let i = 0; i < 3; i++) {
+           const idx = Math.floor(Math.random() * newTokens.length);
+           if (newTokens[idx]) {
+              const token = { ...newTokens[idx] };
+              const delta = (Math.random() - 0.5) * 500; // Random price jump
+              token.mcap = Math.max(0, token.mcap + delta);
+              newTokens[idx] = token;
+           }
         }
-      } catch {
-        // ignore malformed
-      }
-    };
+        return newTokens;
+      });
+    }, 200);
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [qc, url]);
+    return () => clearInterval(interval);
+  }, [qc]);
 }
